@@ -1,6 +1,11 @@
-/** Accent-insensitive search normalisation (same as the clients' `normalize`). */
-export function normalize(s: string): string {
-  return s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim()
+/** Lowercase, strip accents and punctuation: identical to the web app's `normalize` (src/lib/text.ts). */
+export function normalize(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
 }
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
@@ -10,23 +15,12 @@ export function graphemeLength(s: string): number {
   return n
 }
 
-/** Scripts written without spaces between words. */
-const NO_SPACE_LANGS = new Set(['zh', 'ja', 'th', 'km', 'my'])
-
-const EDGE_PUNCT = /^[^\p{L}\p{M}\p{N}'-]+|[^\p{L}\p{M}\p{N}'-]+$/gu
-
 /**
- * Word pieces for the Word builder test: Intl.Segmenter for scripts without spaces,
- * whitespace splitting otherwise (punctuation trimmed from each piece).
+ * Word pieces for the Word builder test: identical to the web app's `words()` helper —
+ * Intl.Segmenter word segmentation with the language's speech code (handles Chinese, Thai…),
+ * keeping only word-like segments.
  */
 export function wordPieces(text: string, speechCode: string): string[] {
-  const lang = speechCode.split('-')[0]?.toLowerCase() ?? ''
-  if (NO_SPACE_LANGS.has(lang)) {
-    const seg = new Intl.Segmenter(speechCode, { granularity: 'word' })
-    return [...seg.segment(text)].filter((s) => s.isWordLike).map((s) => s.segment)
-  }
-  return text
-    .split(/\s+/u)
-    .map((w) => w.replace(EDGE_PUNCT, ''))
-    .filter((w) => w.length > 0)
+  const segs = Array.from(new Intl.Segmenter(speechCode, { granularity: 'word' }).segment(text))
+  return segs.filter((s) => s.isWordLike).map((s) => s.segment)
 }

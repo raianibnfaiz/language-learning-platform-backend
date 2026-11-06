@@ -54,7 +54,7 @@ describe('time', () => {
 
 describe('text', () => {
   it('normalises accents and case like the clients', () => {
-    expect(normalize('  ¿Dónde ESTÁ?  ')).toBe('¿donde esta?')
+    expect(normalize('  ¿Dónde ESTÁ?  ')).toBe('donde esta')
     expect(normalize('Ça va')).toBe('ca va')
   })
   it('counts graphemes, not code units', () => {

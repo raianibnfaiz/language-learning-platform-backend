@@ -54,3 +54,22 @@ describe('seed source expansion', () => {
     await expect(loadSourceModules('/nonexistent')).rejects.toThrow(/Copy the client's catalog.ts/)
   })
 })
+
+describe('real content in source-data/', () => {
+  it('yields exactly 54 languages, 7 situations, 773 phrases, 5 career languages, 30 lessons', async () => {
+    const data = buildContent(await loadSourceModules(path.resolve('source-data')))
+    expect(() => assertCounts(countsOf(data))).not.toThrow()
+    expect(
+      data.languages
+        .filter((l) => l.featured)
+        .map((l) => l._id)
+        .sort(),
+    ).toEqual(['english', 'french', 'german', 'mandarin', 'spanish'])
+    expect(data.languages.filter((l) => !l.featured).every((l) => l.availableSituationIds.length === 2)).toBe(
+      true,
+    )
+    const zh = data.phrases.find((p) => p.key === 'mandarin:hello')!
+    expect(zh.romanization).toBeTruthy()
+    expect(zh.wordPieces.length).toBeGreaterThan(0)
+  })
+})

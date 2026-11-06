@@ -11,7 +11,7 @@ Node.js 22 · Express 5 · TypeScript (strict) · MongoDB 7 (replica set) · Mon
 cp .env.example .env              # then set JWT_ACCESS_SECRET (≥ 32 bytes)
 docker compose up -d mongo        # MongoDB 7 single-node replica set
 npm ci && npm run migrate:up      # collections + indexes
-npm run seed                      # needs the 4 files in source-data/ (see source-data/README.md)
+npm run seed                      # 54 languages, 7 situations, 773 phrases, 5 career languages, 30 lessons
 npm run dev                       # http://localhost:4000/api/v1, docs at http://localhost:4000/api/docs
 ```
 
@@ -19,15 +19,15 @@ Or everything in containers: `docker compose up --build` (API, MongoDB, migratio
 Add `--profile dev` for mongo-express on :8081. `npm run seed:dev-user` creates
 `demo@lingbloomtalk.local` / `lingbloom-demo-pass` with some progress.
 
-| Script | |
-|---|---|
-| `dev` / `build` / `start` | watch mode / compile to `dist/` / run compiled |
-| `test`, `test:watch`, `test:coverage` | Vitest + Supertest against an in-memory MongoDB replica set |
-| `lint`, `typecheck`, `format` | ESLint, `tsc --noEmit`, Prettier |
-| `seed`, `seed:dev-user` | import `source-data/` (add `-- --dry-run` for a diff only) / demo learner |
-| `migrate:up`, `migrate:down` | apply / revert migrations in `src/db/migrations` |
-| `openapi` | write `openapi.json` (CI fails if it's out of date) |
-| `start:migrate`, `start:seed` | the same, from `dist/` (used by the Docker image) |
+| Script                                |                                                                           |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| `dev` / `build` / `start`             | watch mode / compile to `dist/` / run compiled                            |
+| `test`, `test:watch`, `test:coverage` | Vitest + Supertest against an in-memory MongoDB replica set               |
+| `lint`, `typecheck`, `format`         | ESLint, `tsc --noEmit`, Prettier                                          |
+| `seed`, `seed:dev-user`               | import `source-data/` (add `-- --dry-run` for a diff only) / demo learner |
+| `migrate:up`, `migrate:down`          | apply / revert migrations in `src/db/migrations`                          |
+| `openapi`                             | write `openapi.json` (CI fails if it's out of date)                       |
+| `start:migrate`, `start:seed`         | the same, from `dist/` (used by the Docker image)                         |
 
 ## Architecture
 
@@ -64,11 +64,11 @@ double-counted, and every changed document is stamped with the new version for d
 
 ## Auth flow
 
-| | Web (`X-Client: web`, default) | Mobile (`X-Client: ios` / `android`) |
-|---|---|---|
-| login / register | `{ user, accessToken }` + `Set-Cookie: lbt_rt=…; HttpOnly; SameSite=Strict; Path=/api/v1/auth` | `{ user, accessToken, refreshToken }` |
-| refresh | `POST /auth/refresh` with the cookie **and** `X-Requested-With: lingbloomtalk` (Origin checked against `CORS_ORIGINS`) | `POST /auth/refresh { refreshToken }` |
-| storage | access token in memory only | `flutter_secure_storage` |
+|                  | Web (`X-Client: web`, default)                                                                                         | Mobile (`X-Client: ios` / `android`)  |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| login / register | `{ user, accessToken }` + `Set-Cookie: lbt_rt=…; HttpOnly; SameSite=Strict; Path=/api/v1/auth`                         | `{ user, accessToken, refreshToken }` |
+| refresh          | `POST /auth/refresh` with the cookie **and** `X-Requested-With: lingbloomtalk` (Origin checked against `CORS_ORIGINS`) | `POST /auth/refresh { refreshToken }` |
+| storage          | access token in memory only                                                                                            | `flutter_secure_storage`              |
 
 - Access token: JWT, 15 min, HS256 (or RS256/EdDSA with `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY`), claims `sub, role, tv, sid, iss, aud`.
 - Refresh token: 256-bit opaque, 30 days, stored only as SHA-256, **rotated on every use**. Presenting an
@@ -100,6 +100,7 @@ X-Timezone: Asia/Dhaka
       "localDay": "2026-11-06", "payload": { "key": "spanish:hello", "value": true } }
   ] }
 ```
+
 ```jsonc
 { "data": {
     "results": [
@@ -111,18 +112,18 @@ X-Timezone: Asia/Dhaka
     "derived": { "xp": 1290, "level": 6, "streak": 4, "todayXp": 37, "dueCount": 9 } } }
 ```
 
-| type | payload | merge rule |
-|---|---|---|
-| `phrase.heard` | `{ key }` | set union, +2 XP only if new on the server |
-| `phrase.speak` | `{ key, score }` | +5 if score ≥ 0.7 |
-| `phrase.note` | `{ key, note }` | last writer wins by `occurredAt` (empty deletes) |
-| `phrase.favorite` / `word.favorite` | `{ key, value }` / `{ langId, word, value }` | LWW |
-| `test.recorded` | `{ langId, situationId, test, correct, total, answers?, missed, comboBonuses }` | unlock checked, stars = max, missed → review box 0, XP = `correct × XP.TEST[n] + comboBonuses × 5` |
-| `review.add` / `review.answer` | `{ keys }` / `{ key, knewIt }` | box 0 due `localDay` / Leitner on the server's card, stale answers ignored |
-| `lesson.complete` / `lesson.bookmark` | `{ lessonId, value }` | LWW, ±50 XP only on a real change |
-| `practice.answered` | `{ correct, total }` | +10 per correct, total ≤ 20 |
-| `language.visit` | `{ langId }` | merged into `recent` by `occurredAt`, max 6 |
-| `prefs.update` | `{ theme?, haptics? }` | LWW |
+| type                                  | payload                                                                         | merge rule                                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `phrase.heard`                        | `{ key }`                                                                       | set union, +2 XP only if new on the server                                                         |
+| `phrase.speak`                        | `{ key, score }`                                                                | +5 if score ≥ 0.7                                                                                  |
+| `phrase.note`                         | `{ key, note }`                                                                 | last writer wins by `occurredAt` (empty deletes)                                                   |
+| `phrase.favorite` / `word.favorite`   | `{ key, value }` / `{ langId, word, value }`                                    | LWW                                                                                                |
+| `test.recorded`                       | `{ langId, situationId, test, correct, total, answers?, missed, comboBonuses }` | unlock checked, stars = max, missed → review box 0, XP = `correct × XP.TEST[n] + comboBonuses × 5` |
+| `review.add` / `review.answer`        | `{ keys }` / `{ key, knewIt }`                                                  | box 0 due `localDay` / Leitner on the server's card, stale answers ignored                         |
+| `lesson.complete` / `lesson.bookmark` | `{ lessonId, value }`                                                           | LWW, ±50 XP only on a real change                                                                  |
+| `practice.answered`                   | `{ correct, total }`                                                            | +10 per correct, total ≤ 20                                                                        |
+| `language.visit`                      | `{ langId }`                                                                    | merged into `recent` by `occurredAt`, max 6                                                        |
+| `prefs.update`                        | `{ theme?, haptics? }`                                                          | LWW                                                                                                |
 
 - **Idempotent**: `(userId, opId)` is unique; replays return `duplicate` with the original result.
 - **Atomic**: one transaction and one `stateVersion` bump per batch; a batch where nothing applied gives the bump back.
@@ -137,25 +138,25 @@ X-Timezone: Asia/Dhaka
 
 Errors are `{ "error": { "code", "message", "details"?, "requestId" } }`. Clients switch on `code`.
 
-| code | HTTP | when |
-|---|---|---|
-| `VALIDATION_ERROR` | 400 / 413 / 422 | bad shape (400), body too large (413), impossible numbers like `correct > total` (422) |
-| `UNAUTHENTICATED` | 401 | missing / invalid token, unknown refresh token |
-| `TOKEN_EXPIRED` | 401 | access token expired → refresh once and retry |
-| `TOKEN_REVOKED` | 401 | logout-all, password change, device removed, refresh reuse |
-| `INVALID_CREDENTIALS` | 401 | wrong email/password (same answer for unknown emails) |
-| `FORBIDDEN` | 403 | not an admin, missing CSRF header / bad Origin |
-| `ACCOUNT_LOCKED` | 403 | 5 failed logins, `details.retryAfterSeconds` |
-| `NOT_FOUND` | 404 | unknown route, language, session… |
-| `SITUATION_UNAVAILABLE` | 404 / 422 | "coming soon" situation (404 on content reads, 422 on writes) |
-| `CONFLICT` / `EMAIL_TAKEN` | 409 | duplicate value / second import without `strategy` |
-| `TEST_LOCKED` | 422 | test n needs ≥ 1 star on test n-1 |
-| `UNKNOWN_PHRASE` / `UNKNOWN_LESSON` | 422 | key or lesson id not in the content |
-| `DAY_OUT_OF_RANGE` | 422 | `localDay` outside the accepted window |
-| `UPGRADE_REQUIRED` | 426 | `X-App-Version` below `MIN_APP_VERSION_<client>` |
-| `RATE_LIMITED` | 429 | rate limit or translation quota |
-| `NOT_ENABLED` | 501 | translation / server-side help bot (phase 2) |
-| `INTERNAL` | 500 | anything else (details only in logs) |
+| code                                | HTTP            | when                                                                                   |
+| ----------------------------------- | --------------- | -------------------------------------------------------------------------------------- |
+| `VALIDATION_ERROR`                  | 400 / 413 / 422 | bad shape (400), body too large (413), impossible numbers like `correct > total` (422) |
+| `UNAUTHENTICATED`                   | 401             | missing / invalid token, unknown refresh token                                         |
+| `TOKEN_EXPIRED`                     | 401             | access token expired → refresh once and retry                                          |
+| `TOKEN_REVOKED`                     | 401             | logout-all, password change, device removed, refresh reuse                             |
+| `INVALID_CREDENTIALS`               | 401             | wrong email/password (same answer for unknown emails)                                  |
+| `FORBIDDEN`                         | 403             | not an admin, missing CSRF header / bad Origin                                         |
+| `ACCOUNT_LOCKED`                    | 403             | 5 failed logins, `details.retryAfterSeconds`                                           |
+| `NOT_FOUND`                         | 404             | unknown route, language, session…                                                      |
+| `SITUATION_UNAVAILABLE`             | 404 / 422       | "coming soon" situation (404 on content reads, 422 on writes)                          |
+| `CONFLICT` / `EMAIL_TAKEN`          | 409             | duplicate value / second import without `strategy`                                     |
+| `TEST_LOCKED`                       | 422             | test n needs ≥ 1 star on test n-1                                                      |
+| `UNKNOWN_PHRASE` / `UNKNOWN_LESSON` | 422             | key or lesson id not in the content                                                    |
+| `DAY_OUT_OF_RANGE`                  | 422             | `localDay` outside the accepted window                                                 |
+| `UPGRADE_REQUIRED`                  | 426             | `X-App-Version` below `MIN_APP_VERSION_<client>`                                       |
+| `RATE_LIMITED`                      | 429             | rate limit or translation quota                                                        |
+| `NOT_ENABLED`                       | 501             | translation / server-side help bot (phase 2)                                           |
+| `INTERNAL`                          | 500             | anything else (details only in logs)                                                   |
 
 ## Content and caching
 
@@ -192,8 +193,9 @@ Learner endpoints are always `Cache-Control: no-store`.
 - Game rules live in `src/core/rules` and are covered 100% by unit tests. Numbers match §4 of the spec.
 - Phrase-key/lesson existence is checked in the services (not in Zod) so the error is `UNKNOWN_PHRASE` /
   `UNKNOWN_LESSON` rather than a generic validation error.
-- Test titles/XP come from the spec; the emoji + hint strings in `src/modules/content/tests.meta.ts`
-  are placeholders until they are copied from the web app's `tests.ts`.
+- `source-data/` holds the web app's content files unchanged. The seed calls the web's own `phrasesFor()`
+  so phrase expansion is identical, and `wordPieces` / search `normalize` mirror the web's `words()` /
+  `normalize()` in `src/lib/text.ts`.
 - `needsPractice` in `/me/progress/languages` is "has review cards due"; `nextSituation` is the first
   available situation with unheard phrases, then the first without all 12 stars.
 - See `CLIENT_INTEGRATION.md` for the web fetch wrapper and the Flutter dio interceptor.

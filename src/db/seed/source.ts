@@ -29,6 +29,10 @@ export interface SourceModules {
 export async function loadSourceModules(
   dir = path.resolve(process.cwd(), 'source-data'),
 ): Promise<SourceModules> {
+  // The client files use extensionless TS imports ('./catalog'); tsx's loader resolves them,
+  // so the files can be copied over unchanged (also works from the compiled dist/ build).
+  const { register } = await import('tsx/esm/api')
+  register()
   const load = async (name: string) => {
     const file = path.join(dir, `${name}.ts`)
     try {
@@ -117,6 +121,28 @@ export function buildContent(src: SourceModules): ContentData {
     (v) => arrOf('phrases')(v) && !arrOf('rank')(v),
     'the situations array',
   )
+  const careers = pick<CareerEntry[]>(
+    src.languages,
+    'languages.ts',
+    ['languages', 'LANGUAGES', 'careerLanguages', 'rankedLanguages'],
+    arrOf('rank'),
+    'the career languages array',
+  )
+
+  // Prefer the web app's own expansion (phrasesFor) when phrases.ts exports it: identical results by design.
+  const webPhrasesFor = src.phrases.phrasesFor as
+    | ((langId: string, situationId: string) => { id: string; text: string; romanization?: string }[])
+    | undefined
+  const webCoreIds = src.phrases.coreSituationIds as string[] | undefined
+  const coreIds: readonly string[] = webCoreIds ?? CORE_SITUATIONS
+  if (typeof webPhrasesFor === 'function')
+    return finish(catalog, situations, careers, coreIds, (lang, sit) => {
+      const list = webPhrasesFor(lang, sit)
+      return list.length
+        ? { texts: list.map((p) => p.text), roms: list.map((p) => p.romanization ?? '') }
+        : null
+    })
+
   const core = pick<Record<string, unknown>>(
     src.phrases,
     'phrases.ts',
@@ -137,14 +163,33 @@ export function buildContent(src: SourceModules): ContentData {
   const travelRom = (['travelRomanization', 'TRAVEL_ROMANIZATION', 'travelRoman']
     .map((n) => src.phrases[n])
     .find(nestedStrMap) ?? {}) as Record<string, Record<string, string>>
-  const careers = pick<CareerEntry[]>(
-    src.languages,
-    'languages.ts',
-    ['languages', 'LANGUAGES', 'careerLanguages', 'rankedLanguages'],
-    arrOf('rank'),
-    'the career languages array',
-  )
+  const coreSitDefs = situations.filter((s) => coreIds.includes(s.id))
+  return finish(catalog, situations, careers, coreIds, (lang, sit) => {
+    const i = coreSitDefs.findIndex((s) => s.id === sit)
+    if (i >= 0) {
+      const offset = coreSitDefs.slice(0, i).reduce((n, s) => n + s.phrases.length, 0)
+      const n = coreSitDefs[i]!.phrases.length
+      const texts = splitTexts(core[lang])
+      if (!texts.length) return null
+      return {
+        texts: texts.slice(offset, offset + n),
+        roms: splitTexts(coreRom[lang]).slice(offset, offset + n),
+      }
+    }
+    const t = travel[lang]?.[sit]
+    return t ? { texts: splitTexts(t), roms: splitTexts(travelRom[lang]?.[sit]) } : null
+  })
+}
 
+type Expand = (langId: string, situationId: string) => { texts: string[]; roms: string[] } | null
+
+function finish(
+  catalog: CatalogEntry[],
+  situations: SituationEntry[],
+  careers: CareerEntry[],
+  coreIds: readonly string[],
+  expand: Expand,
+): ContentData {
   const sitDocs: SituationDoc[] = situations.map((s, i) => ({
     _id: s.id,
     title: s.title,
@@ -152,10 +197,9 @@ export function buildContent(src: SourceModules): ContentData {
     blurb: s.blurb ?? '',
     gradient: s.gradient ?? '',
     order: i,
-    kind: (CORE_SITUATIONS as readonly string[]).includes(s.id) ? 'core' : 'travel',
+    kind: coreIds.includes(s.id) ? 'core' : 'travel',
     phrases: s.phrases.map((p, j) => ({ id: p.id, english: p.english, picture: p.picture, order: j })),
   }))
-  const coreSits = sitDocs.filter((s) => s.kind === 'core')
   const errors: string[] = []
   const phrases: ContentData['phrases'] = []
   const available = new Map<string, string[]>()
@@ -185,19 +229,10 @@ export function buildContent(src: SourceModules): ContentData {
         })
       })
     }
-    // core: the texts of all core situations, in situation order
-    const coreTexts = splitTexts(core[lang.id])
-    const coreRoms = splitTexts(coreRom[lang.id])
-    if (!coreTexts.length) errors.push(`${lang.id}: missing core phrases`)
-    let offset = 0
-    for (const sit of coreSits) {
-      const n = sit.phrases.length
-      add(sit, coreTexts.slice(offset, offset + n), coreRoms.slice(offset, offset + n))
-      offset += n
-    }
-    for (const sit of sitDocs.filter((s) => s.kind === 'travel')) {
-      const t = travel[lang.id]?.[sit._id]
-      if (t) add(sit, splitTexts(t), splitTexts(travelRom[lang.id]?.[sit._id]))
+    for (const sit of sitDocs) {
+      const got = expand(lang.id, sit._id)
+      if (got) add(sit, got.texts, got.roms)
+      else if (sit.kind === 'core') errors.push(`${lang.id}: missing ${sit._id} phrases`)
     }
     available.set(lang.id, avail)
   }
