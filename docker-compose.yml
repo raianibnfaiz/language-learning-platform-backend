@@ -1,0 +1,57 @@
+# Local stack: MongoDB 7 single-node replica set (transactions need one) + migrations/seed + API.
+#   docker compose up --build              -> API on http://localhost:4000/api/v1, docs on /api/docs
+#   docker compose --profile dev up        -> also mongo-express on http://localhost:8081
+name: lingbloomtalk
+
+x-api-env: &api-env
+  MONGODB_URI: mongodb://mongo:27017/lingbloomtalk?replicaSet=rs0&directConnection=true
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-local-dev-only-secret-change-me-0123456789}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+  APP_WEB_URL: ${APP_WEB_URL:-http://localhost:5173}
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+  DOCS_ENABLED: ${DOCS_ENABLED:-true}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+services:
+  mongo:
+    image: mongo:7
+    command: ['--replSet', 'rs0', '--bind_ip_all']
+    ports: ['27017:27017']
+    volumes: ['mongo-data:/data/db']
+    healthcheck:
+      # initiates the replica set on first start, then reports healthy once it has a primary
+      test: >
+        mongosh --quiet --eval "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }).ok }"
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 5s
+
+  migrate:
+    build: .
+    command: ['sh', '-c', 'node dist/src/db/migrate.js up && node dist/src/db/seed/run.js']
+    environment: *api-env
+    depends_on:
+      mongo: { condition: service_healthy }
+    restart: 'no'
+
+  api:
+    build: .
+    ports: ['4000:4000']
+    environment: *api-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  mongo-express:
+    image: mongo-express:1
+    profiles: ['dev']
+    ports: ['8081:8081']
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://mongo:27017/?replicaSet=rs0&directConnection=true
+      ME_CONFIG_BASICAUTH: 'false'
+    depends_on:
+      mongo: { condition: service_healthy }
+
+volumes:
+  mongo-data:
