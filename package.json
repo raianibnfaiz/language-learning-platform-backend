@@ -24,7 +24,7 @@
   },
   "license": "UNLICENSED",
   "dependencies": {
-    "@asteasolutions/zod-to-openapi": "^8.5.0",
+    "@asteasolutions/zod-to-openapi": "^9.1.0",
     "argon2": "^0.45.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
